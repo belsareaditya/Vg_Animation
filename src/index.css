@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root{
+  --bg: #0b1020;
+  --text: #e5e7eb;
+  --accent: #6366f1;
+  --accent-2: #22c55e;
+  --grad1: rgba(99,102,241,.18);
+  --grad2: rgba(34,197,94,.15);
+}
+
+html,body,#root{height:100%}
+body{background:var(--bg); color:var(--text)}
+
+.page-bg{ position:relative; isolation:isolate; }
+.page-bg::before, .page-bg::after{ content:''; position:absolute; inset:0; z-index:-1; pointer-events:none; }
+.page-bg::before{
+  background:
+    radial-gradient(1000px 500px at 10% 10%, var(--grad1), transparent 60%),
+    radial-gradient(900px 600px at 90% 90%, var(--grad2), transparent 60%);
+  opacity:.9;
+}
+.page-bg::after{ background: var(--bg); z-index:-2; }
+
+.input {
+  @apply rounded-xl px-3 py-2 bg-white/10 border border-white/10 outline-none focus:ring-2;
+  color: var(--text);
+  min-height: 42px;
+}
+select.input{
+  color: var(--text);
+  background-color: rgba(255,255,255,.08);
+}
+select.input option{
+  color: var(--text);
+  background-color: var(--bg);
+}
+.input:focus { box-shadow: 0 0 0 3px rgba(255,255,255,.18); }
+
+.btn { @apply rounded-xl px-4 py-2 font-bold; }
+
+/* Floating DICE theme button (top-right) */
+.theme-fab{
+  position: fixed;
+  right: 16px;
+  top: 16px;
+  z-index: 60;
+  border-radius: 9999px;
+  padding: 10px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: white;
+  border: 1px solid rgba(255,255,255,.25);
+  box-shadow: 0 8px 24px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.08);
+  backdrop-filter: blur(8px);
+}
+
+@keyframes dice-pop {
+  0%   { transform: scale(0.95) rotate(-12deg); }
+  50%  { transform: scale(1.08) rotate(8deg); }
+  100% { transform: scale(1.0) rotate(0deg); }
+}
+.dice-anim { animation: dice-pop .55s cubic-bezier(.2,.7,.2,1); }
+
+.dice svg { filter: drop-shadow(0 2px 6px rgba(0,0,0,.45)); }
