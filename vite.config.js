@@ -10,6 +10,6 @@ export default defineConfig({
   },
   preview: {
     host: '0.0.0.0',   // same for vite preview mode
-    port: 4173         // match your logs (or switch to 5173 if you prefer)
+    port: 5173         // match your logs (or switch to 5173 if you prefer)
   }
 })
