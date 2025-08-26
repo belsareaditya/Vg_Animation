@@ -12,11 +12,12 @@ pipeline {
     IMAGE_TAG      = "${DOCKERHUB_USER}/${IMAGE_NAME}:${env.BUILD_NUMBER}"
 
     // Deploy configs
-    CONTAINER_NAME = 'vault_guard'   // container name to (re)use
-    APP_PORT       = '5173'          // host port to bind
+    CONTAINER_NAME = 'vault_guard'   // container name
+    APP_PORT       = '5173'          // host port (public)
+    CONTAINER_PORT = '4173'          // **container** port (Vite preview default earlier)
 
     EMAIL_TO       = 'belsareadityadevops@gmail.com'
-    EMAIL_FROM     = 'no-reply@jenkins.local'   // or set to your Gmail if SMTP is configured for it
+    EMAIL_FROM     = 'belsareadityadevops@gmail.com'   // must match your SMTP-authenticated account
   }
 
   stages {
@@ -27,10 +28,8 @@ pipeline {
       }
     }
 
-    /* NEW: OWASP Dependency-Check */
     stage('OWASP Dependency Check') {
       steps {
-        // Requires "OWASP Dependency-Check" Jenkins plugin and a configured installation
         dependencyCheck additionalArguments: '''
           --scan .
           --format XML
@@ -41,7 +40,6 @@ pipeline {
         ''',
         odcInstallation: 'dp-check'
 
-        // Publish the XML report for trend graph and set build status on CVSS thresholds (if configured)
         dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
       }
     }
@@ -72,8 +70,6 @@ pipeline {
           echo "🧪 Trivy Image scan..."
           trivy image ${IMAGE_NAME} -f table -o trivy-image.txt || true
           trivy image ${IMAGE_NAME} -f json  -o trivy-image.json || true
-          # To fail on HIGH/CRITICAL, uncomment:
-          # trivy image --exit-code 1 --severity HIGH,CRITICAL ${IMAGE_NAME}
         '''
       }
     }
@@ -92,36 +88,38 @@ pipeline {
       }
     }
 
-    /* NEW: Pull the same image and run it detached on port 5173 */
     stage('Deploy (Run Container)') {
       steps {
-        sh '''
-          set -e
-          echo "🚀 Deploying ${IMAGE_TAG} as container ${CONTAINER_NAME} on port ${APP_PORT}..."
+        withCredentials([string(credentialsId: 'docker-cred', variable: 'dockerpwd')]) {
+          sh '''
+            set -e
+            echo "🚀 Deploying ${IMAGE_TAG} as container ${CONTAINER_NAME} on ${APP_PORT}->${CONTAINER_PORT}..."
 
-          # Ensure login still valid for private repos; harmless if public
-          docker logout || true
-          docker pull ${IMAGE_TAG}
+            # Login (needed for private repos)
+            echo "${dockerpwd}" | docker login -u ${DOCKERHUB_USER} --password-stdin
 
-          # Stop & remove any existing container with the same name
-          if [ "$(docker ps -aq -f name=^/${CONTAINER_NAME}$)" ]; then
-            echo "Stopping and removing existing container ${CONTAINER_NAME}..."
-            docker stop ${CONTAINER_NAME} || true
-            docker rm ${CONTAINER_NAME} || true
-          fi
+            docker pull ${IMAGE_TAG}
 
-          # Optionally clean dangling images (non-fatal)
-          docker image prune -f || true
+            # Stop & remove any existing container with the same name
+            if [ "$(docker ps -aq -f name=^/${CONTAINER_NAME}$)" ]; then
+              echo "Stopping and removing existing container ${CONTAINER_NAME}..."
+              docker stop ${CONTAINER_NAME} || true
+              docker rm ${CONTAINER_NAME} || true
+            fi
 
-          # Run detached, binding host 5173 to container 5173
-          docker run -d \
-            --name ${CONTAINER_NAME} \
-            -p ${APP_PORT}:5173 \
-            --restart unless-stopped \
-            ${IMAGE_TAG}
+            docker image prune -f || true
 
-          echo "✅ Container ${CONTAINER_NAME} is running with ${IMAGE_TAG} on http://localhost:${APP_PORT}"
-        '''
+            # Run detached, mapping host 5173 → container 4173
+            docker run -d \
+              --name ${CONTAINER_NAME} \
+              -p ${APP_PORT}:${CONTAINER_PORT} \
+              --restart unless-stopped \
+              ${IMAGE_TAG}
+
+            echo "✅ ${CONTAINER_NAME} running: host ${APP_PORT} -> container ${CONTAINER_PORT}"
+            echo "   Try: curl -I http://localhost:${APP_PORT}"
+          '''
+        }
       }
     }
   }
@@ -129,23 +127,27 @@ pipeline {
   post {
     always {
       script {
+        archiveArtifacts allowEmptyArchive: true, artifacts: 'trivy-*.txt,trivy-*.json,dependency-check-report.*'
+
         def status = currentBuild.currentResult
         emailext(
-          subject: "Jenkins Pipeline ${status}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-          body: """
-            <p>Build report for <b>${env.JOB_NAME}</b> #<b>${env.BUILD_NUMBER}</b></p>
-            <ul>
-              <li>Status: <b>${status}</b></li>
-              <li>Image pushed: <code>${IMAGE_TAG}</code></li>
-              <li>Container: <code>${CONTAINER_NAME}</code> on port <code>${APP_PORT}</code></li>
-              <li>Build URL: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></li>
-            </ul>
-            <p>Trivy & OWASP reports are attached.</p>
-          """,
           to: "${EMAIL_TO}",
           from: "${EMAIL_FROM}",
+          subject: "Jenkins ${status}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
           mimeType: 'text/html',
-          attachmentsPattern: 'trivy-fs.txt,trivy-fs.json,trivy-image.txt,trivy-image.json,dependency-check-report.xml,dependency-check-report.html'
+          body: """
+            <p><b>${env.JOB_NAME}</b> #<b>${env.BUILD_NUMBER}</b> finished with: <b>${status}</b></p>
+            <ul>
+              <li>Image: <code>${IMAGE_TAG}</code></li>
+              <li>Container: <code>${CONTAINER_NAME}</code> mapped <b>${APP_PORT}:${CONTAINER_PORT}</b></li>
+              <li>Build: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></li>
+              <li>Artifacts: <a href="${env.BUILD_URL}artifact">download</a></li>
+              <li>Console: <a href="${env.BUILD_URL}console">view</a></li>
+            </ul>
+          """,
+          attachmentsPattern: '',
+          attachLog: false,
+          compressLog: false
         )
       }
     }
