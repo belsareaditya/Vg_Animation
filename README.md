@@ -1,11 +1,11 @@
-# Amazon Shopping Website CICD DevSecOps — Setup Guide
+# Vault-Guard Complete Setup
 
 This README collects useful commands and links to install common DevOps, CI/CD, and security tooling on Ubuntu systems. It has been cleaned up, organized, and corrected for clarity. Always review commands for your environment and needs.
 
 > **Note:** Replace all `<VERSION>`, `<your-server-ip>`, `<jenkins-ip>`, `<sonar-ip-address>`, `<ACCOUNT_ID>`, and similar placeholders with your actual values.
 ---
 # For more project check out 
-## https://harishnshetty.github.io/projects.html
+
 ---
 ![img alt](https://github.com/harishnshetty/amazon-Devsecops/blob/c69c0f8f0e7b0e75071f44eb79106114db4435a0/img.png)
 ---
@@ -43,7 +43,8 @@ This README collects useful commands and links to install common DevOps, CI/CD, 
 | Prometheus      | 9090  |
 | Node Exporter   | 9100  |
 | Grafana         | 3000  |
-
+| Vault Guard     | 5173  |
+| Vault Guard     | 4173  |
 ---
 
 ## Prerequisites
