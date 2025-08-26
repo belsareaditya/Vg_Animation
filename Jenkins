@@ -1,0 +1,96 @@
+pipeline {
+  agent any
+
+  tools {
+    jdk 'jdk17'      // Ensure this tool exists in Global Tool Configuration
+    nodejs 'node23'  // Ensure this tool exists in Global Tool Configuration
+  }
+
+  environment {
+    DOCKERHUB_USER = 'belsareaditya'
+    IMAGE_NAME     = 'vault_guard'
+    IMAGE_TAG      = "${DOCKERHUB_USER}/${IMAGE_NAME}:${env.BUILD_NUMBER}"
+
+    EMAIL_TO       = 'belsareadityadevops@gmail.com'
+    EMAIL_FROM     = 'no-reply@jenkins.local'   // or set to your Gmail if SMTP is configured for it
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        cleanWs()
+        git branch: 'main', url: 'https://github.com/belsareaditya/Vg_Animation.git'
+      }
+    }
+
+    stage('Trivy Filesystem Scan') {
+      steps {
+        sh '''
+          echo "🔎 Trivy FS scan..."
+          trivy fs . -f table -o trivy-fs.txt || true
+          trivy fs . -f json  -o trivy-fs.json || true
+        '''
+      }
+    }
+
+    stage('Build Docker Image') {
+      steps {
+        sh '''
+          echo "🔨 Building Docker image..."
+          docker rmi -f ${IMAGE_NAME} ${IMAGE_TAG} || true
+          docker build -t ${IMAGE_NAME} .
+        '''
+      }
+    }
+
+    stage('Trivy Image Scan') {
+      steps {
+        sh '''
+          echo "🧪 Trivy Image scan..."
+          trivy image ${IMAGE_NAME} -f table -o trivy-image.txt || true
+          trivy image ${IMAGE_NAME} -f json  -o trivy-image.json || true
+          # To fail on HIGH/CRITICAL, uncomment:
+          # trivy image --exit-code 1 --severity HIGH,CRITICAL ${IMAGE_NAME}
+        '''
+      }
+    }
+
+    stage('Push Docker Image') {
+      steps {
+        withCredentials([string(credentialsId: 'docker-cred', variable: 'dockerpwd')]) {
+          sh '''
+            echo "${dockerpwd}" | docker login -u ${DOCKERHUB_USER} --password-stdin
+            docker tag ${IMAGE_NAME} ${IMAGE_TAG}
+            docker push ${IMAGE_TAG}
+            docker tag ${IMAGE_NAME} ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
+            docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:latest
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      script {
+        def status = currentBuild.currentResult
+        emailext(
+          subject: "Jenkins Pipeline ${status}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+          body: """
+            <p>Build report for <b>${env.JOB_NAME}</b> #<b>${env.BUILD_NUMBER}</b></p>
+            <ul>
+              <li>Status: <b>${status}</b></li>
+              <li>Image pushed: <code>${IMAGE_TAG}</code></li>
+              <li>Build URL: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></li>
+            </ul>
+            <p>Trivy reports are attached.</p>
+          """,
+          to: "${EMAIL_TO}",
+          from: "${EMAIL_FROM}",
+          mimeType: 'text/html',
+          attachmentsPattern: 'trivy-fs.txt,trivy-fs.json,trivy-image.txt,trivy-image.json'
+        )
+      }
+    }
+  }
+}
